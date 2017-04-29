@@ -10,10 +10,10 @@ You need to install ceres-solver and Eigen3 before you can compile this code.
 ## How to compile
 ### Compile
 ```
-mkdir build<br/>
-cd build <br/>
-cmake .. <br/>
-make <br/>
+mkdir build
+cd build 
+cmake .. 
+make 
 ```
 
 This should produce an executable `toy_pose_graph`. Run this executable from build folder. 
@@ -29,7 +29,7 @@ This executable reads file `../input_M3500_g2o.g2o` and produces `../init.txt`  
 We have provided a python script to visualize the results. The text files to supply should contain lines as : `id x y theta` representing every node. 
 
 ```
-cd .. #come out of build directory <br/>
+cd .. #come out of build directory 
 python plot_results.py --initial_poses init.txt --optimized_poses after_opt.txt
 ```
 
