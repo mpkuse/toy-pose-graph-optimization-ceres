@@ -253,7 +253,7 @@ int main()
     ReadG2O g( fname );
 
     // Write pose graph before optimization
-    g.writePoseGraph("../init.txt");
+    g.writePoseGraph_nodes("../init.txt");
     cout << "total nodes : "<< g.nNodes.size() << endl;
     cout << "total edges : "<< g.nEdges.size() << endl;
 
