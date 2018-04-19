@@ -185,6 +185,7 @@ public:
         cout << "#optimized " << optimized.size()<< endl;
         fstream fp;
         fp.open( fname.c_str(), ios::out );
+        fp << "Odometry EDGES AHEAD\n";
         for( int i=0 ; i<nEdgesOdometry.size() ; i++ )
         {
             Edge * ed = nEdgesOdometry[i];
@@ -193,7 +194,7 @@ public:
         }
 
 
-
+        fp << "Closure EDGES AHEAD\n";
         for( int i=0 ; i<nEdgesClosure.size() ; i++ )
         {
             Edge * ed = nEdgesClosure[i];
@@ -201,7 +202,7 @@ public:
                     " " << priors[i] << " " << *(optimized[i]) << endl;
         }
 
-        // fp << "BOGUS EDGES AHEAD\n";
+        fp << "BOGUS EDGES AHEAD\n";
         int ofset = nEdgesClosure.size();
         for( int i=0 ; i<nEdgesBogus.size() ; i++ )
         {
@@ -428,15 +429,15 @@ struct SwitchableClosureResidue
         Eigen::Matrix<T,3,3> diff = T_a_Tcap_b.inverse() * (w_T_a.inverse() * w_T_b);
 
         // psi - scalar
-        T psi = T(1.0) / (T(1.0) + exp( T(-2.0)*s[0] ));
-        // T psi = max( T(0.0), min( T(1.0), s[0] ) );
+        // T psi = T(1.0) / (T(1.0) + exp( T(-2.0)*s[0] )); // zero-penalization factor 0.1
+        T psi = max( T(0.0), min( T(1.0), s[0] ) ); //zero-penalization factor 1.5. This needs aggresive zero penalization
 
 
 
         e[0] = psi*diff(0,2);
         e[1] = psi*diff(1,2);
         e[2] = psi*asin( diff(1,0) );
-        e[3] = T(0.1) * (this->s_prior - s[0]);
+        e[3] = T(1.5) * (this->s_prior - s[0]);
 
         return true;
     }
@@ -455,8 +456,123 @@ struct SwitchableClosureResidue
 };
 
 
-// Switch Prior Constraints
+// Dynamic Covariance Scaling
+struct DCSClosureResidue
+{
+    // Observation for the edge
+    DCSClosureResidue(double dx, double dy, double dtheta )
+    {
 
+        this->dx = dx;
+        this->dy = dy;
+        this->dtheta = dtheta;
+        this->s_cap = drand48() * .1 + .9;
+
+        // make a_Tcap_b
+        {
+          double cos_t = cos( this->dtheta );
+          double sin_t = sin( this->dtheta );
+          a_Tcap_b(0,0) = cos_t;
+          a_Tcap_b(0,1) = -sin_t;
+          a_Tcap_b(1,0) = sin_t;
+          a_Tcap_b(1,1) = cos_t;
+          a_Tcap_b(0,2) = this->dx;
+          a_Tcap_b(1,2) = this->dy;
+
+          a_Tcap_b(2,0) = 0.0;
+          a_Tcap_b(2,1) = 0.0;
+          a_Tcap_b(2,2) = 1.0;
+      }
+
+    }
+
+    // Define the residue for each edge. P1 and P2 are 3-vectors representing state of the node ie. x,y,theta
+    template <typename T>
+    bool operator()(const T* const P1, const T* const P2, T* e) const
+    {
+
+        // Convert P1 to T1 ^w_T_a
+        Eigen::Matrix<T,3,3> w_T_a;
+        {
+          T cos_t = T(cos( P1[2] ));
+          T sin_t = T(sin( P1[2] ));
+          w_T_a(0,0) = cos_t;
+          w_T_a(0,1) = -sin_t;
+          w_T_a(1,0) = sin_t;
+          w_T_a(1,1) = cos_t;
+          w_T_a(0,2) = P1[0];
+          w_T_a(1,2) = P1[1];
+
+          w_T_a(2,0) = T(0.0);
+          w_T_a(2,1) = T(0.0);
+          w_T_a(2,2) = T(1.0);
+      }
+
+
+        // Convert P2 to T2 ^w_T_a
+        Eigen::Matrix<T,3,3> w_T_b;
+        {
+          T cos_t = cos( P2[2] );
+          T sin_t = sin( P2[2] );
+          w_T_b(0,0) = cos_t;
+          w_T_b(0,1) = -sin_t;
+          w_T_b(1,0) = sin_t;
+          w_T_b(1,1) = cos_t;
+          w_T_b(0,2) = P2[0];
+          w_T_b(1,2) = P2[1];
+
+          w_T_b(2,0) = T(0.0);
+          w_T_b(2,1) = T(0.0);
+          w_T_b(2,2) = T(1.0);
+      }
+
+      // cast from double to T
+        Eigen::Matrix<T, 3, 3> T_a_Tcap_b;
+        T_a_Tcap_b <<   T(a_Tcap_b(0,0)), T(a_Tcap_b(0,1)),T(a_Tcap_b(0,2)),
+                        T(a_Tcap_b(1,0)), T(a_Tcap_b(1,1)),T(a_Tcap_b(1,2)),
+                        T(a_Tcap_b(2,0)), T(a_Tcap_b(2,1)),T(a_Tcap_b(2,2));
+
+        // now we have :: w_T_a, w_T_b and a_Tcap_b
+        // compute pose difference
+        Eigen::Matrix<T,3,3> diff = T_a_Tcap_b.inverse() * (w_T_a.inverse() * w_T_b);
+
+        // psi - scalar (covariance term. See the paper on DCS for derivation)
+        // T psi = T(1.0) / (T(1.0) + exp( T(-2.0)*s[0] ));
+        // T psi = max( T(0.0), min( T(1.0), s[0] ) );
+
+        T res = diff(0,2)*diff(0,2) + diff(1,2)*diff(1,2); // + asin( diff(1,0) )*asin( diff(1,0) );
+        // T psi_org = T(.3) * T(s_cap) / ( T(1.0) + res ) ;
+        T psi_org = sqrt( T(2.0) * T( .5 ) / ( T(.5) + res ) );
+        // e[0] = psi ;
+        // e[1] = T(0.0);
+        // e[2] = T(0.0);
+        // return true;
+        T psi = min( T(1.0), psi_org ) ;
+
+
+
+
+
+        e[0] = psi*diff(0,2);
+        e[1] = psi*diff(1,2);
+        e[2] = psi*asin( diff(1,0) );
+
+
+        return true;
+    }
+
+    double dx;
+    double dy;
+    double dtheta;
+    double s_cap;
+    Eigen::Matrix<double,3,3> a_Tcap_b;
+
+    static ceres::CostFunction* Create(const double dx, const double dy, const double dtheta){
+        return (new ceres::AutoDiffCostFunction<DCSClosureResidue, 3, 3, 3>(
+            new DCSClosureResidue(dx, dy, dtheta)));
+    };
+
+};
 
 
 int main()
@@ -484,6 +600,9 @@ int main()
     // // // // // Make the cost function // // // // //
     ////////////////////////////////////////////////////
     ceres::Problem problem;
+    ceres::LossFunction * loss_function = NULL;
+    loss_function = new ceres::HuberLoss(0.01);
+
 
     // A - Odometry Constraints
     for( int i=0 ; i<g.nEdgesOdometry.size() ; i++ )
@@ -491,17 +610,18 @@ int main()
         Edge* ed = g.nEdgesOdometry[i];
         ceres::CostFunction * cost_function = OdometryResidue::Create( ed->x, ed->y, ed->theta );
 
-        problem.AddResidualBlock( cost_function, /*new ceres::HuberLoss(0.01)*/NULL, ed->a->p, ed->b->p );
+        problem.AddResidualBlock( cost_function, loss_function, ed->a->p, ed->b->p );
         // cout << ed->a->index << "---> " << ed->b->index << endl;
     }
 
 
     // B - Loop Closure Constaints (switchable)
+#if 0
     vector<double*> switches;
     vector<double> switches_priors;
     for( int i=0 ; i<g.nEdgesClosure.size() ; i++ )
     {
-        double switch_prior = .9 + drand48() / 10.0;
+        double switch_prior = .5 + drand48() / 10.0;
         // cout << "switch_prior : "<< switch_prior << endl;
         // switches.push_back( new double[1] );
         double * switch_opt_var = new double[1]; //optimizable
@@ -512,13 +632,13 @@ int main()
         Edge* ed = g.nEdgesClosure[i];
         ceres::CostFunction * cost_function = SwitchableClosureResidue::Create( ed->x, ed->y, ed->theta, switch_prior );
 
-        problem.AddResidualBlock( cost_function, /*new ceres::HuberLoss(0.01)*/NULL, ed->a->p, ed->b->p, switch_opt_var );
+        problem.AddResidualBlock( cost_function, loss_function, ed->a->p, ed->b->p, switch_opt_var );
         // cout << ed->a->index << "---> " << ed->b->index << endl;
     }
 
     for( int i=0 ; i<g.nEdgesBogus.size() ; i++ )
     {
-        double switch_prior = .9 + drand48() / 10.0;
+        double switch_prior = .5 + drand48() / 10.0;
         // cout << "switch_prior : "<< switch_prior << endl;
         // switches.push_back( new double[1] );
         double * switch_opt_var = new double[1]; //optimizable
@@ -529,10 +649,31 @@ int main()
         Edge* ed = g.nEdgesBogus[i];
         ceres::CostFunction * cost_function = SwitchableClosureResidue::Create( ed->x, ed->y, ed->theta, switch_prior );
 
-        problem.AddResidualBlock( cost_function, /*new ceres::HuberLoss(0.01)*/NULL, ed->a->p, ed->b->p, switch_opt_var );
+        problem.AddResidualBlock( cost_function, loss_function, ed->a->p, ed->b->p, switch_opt_var );
+        // cout << ed->a->index << "---> " << ed->b->index << endl;
+    }
+#endif // end of Switchable constrained edges
+
+#if 1
+    // Loop closure constraints (dynamic covariance scaling)
+    for( int i=0 ; i<g.nEdgesClosure.size() ; i++ )
+    {
+        Edge* ed = g.nEdgesClosure[i];
+        ceres::CostFunction * cost_function = DCSClosureResidue::Create( ed->x, ed->y, ed->theta );
+
+        problem.AddResidualBlock( cost_function, loss_function, ed->a->p, ed->b->p );
         // cout << ed->a->index << "---> " << ed->b->index << endl;
     }
 
+    for( int i=0 ; i<g.nEdgesBogus.size() ; i++ )
+    {
+        Edge* ed = g.nEdgesBogus[i];
+        ceres::CostFunction * cost_function = DCSClosureResidue::Create( ed->x, ed->y, ed->theta );
+
+        problem.AddResidualBlock( cost_function, loss_function, ed->a->p, ed->b->p );
+        // cout << ed->a->index << "---> " << ed->b->index << endl;
+    }
+#endif
 
 
     ///////////////////////////////////////////////
@@ -542,10 +683,18 @@ int main()
     problem.SetParameterBlockConstant(g.nNodes[0]->p); //1st pose be origin
 
     ceres::Solver::Options options;
-    options.linear_solver_type = ceres::SPARSE_SCHUR;
     options.minimizer_progress_to_stdout = true;
-    options.trust_region_strategy_type = ceres::DOGLEG;
-    options.dogleg_type = ceres::SUBSPACE_DOGLEG;
+
+
+    // options.linear_solver_type = ceres::SPARSE_SCHUR;
+    // options.trust_region_strategy_type = ceres::DOGLEG;
+    // options.dogleg_type = ceres::SUBSPACE_DOGLEG;
+
+    options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
+    // options.linear_solver_type = ceres::ITERATIVE_SCHUR;
+    // options.preconditioner_type = ceres::SCHUR_JACOBI;
+
+
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
     cout << summary.FullReport() << endl;
@@ -553,7 +702,7 @@ int main()
     // Write Pose Graph after Optimization
     g.writePoseGraph_nodes(BASE_PATH+"/after_opt_nodes.txt");
     g.writePoseGraph_edges(BASE_PATH+"/after_opt_edges.txt");
-    g.writePoseGraph_switches(BASE_PATH+"/switches.txt", switches_priors, switches);
+    // g.writePoseGraph_switches(BASE_PATH+"/switches.txt", switches_priors, switches);
 
 
 }
