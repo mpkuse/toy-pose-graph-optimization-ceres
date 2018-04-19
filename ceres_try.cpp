@@ -1,3 +1,5 @@
+// Mark for removal. Look at ceres_vertigo. This file is out of date and no more maintained.
+
 #include <iostream>
 #include <string>
 #include <fstream>
@@ -253,7 +255,7 @@ int main()
     ReadG2O g( fname );
 
     // Write pose graph before optimization
-    g.writePoseGraph_nodes("../init.txt");
+    // g.writePoseGraph_nodes("../init.txt");
     cout << "total nodes : "<< g.nNodes.size() << endl;
     cout << "total edges : "<< g.nEdges.size() << endl;
 

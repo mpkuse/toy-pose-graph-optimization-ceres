@@ -464,14 +464,16 @@ int main()
     /////////////////////////////////////////////
     // // // // //  Read g2o file // // // // //
     /////////////////////////////////////////////
-    string fname = "/home/mpkuse/catkin_ws/src/nap/slam_data/input_M3500_g2o.g2o";
+    std::string BASE_PATH = std::string( "../");
+    // string fname = "/home/mpkuse/catkin_ws/src/nap/slam_data/input_M3500_g2o.g2o";
+    string fname = BASE_PATH + "/input_M3500_g2o.g2o";
     cout << "Start Reading PoseGraph\n";
     ReadG2O g( fname );
     g.add_random_C(25);
 
 
-    g.writePoseGraph_nodes("/home/mpkuse/catkin_ws/src/nap/slam_data/init_nodes.txt");
-    g.writePoseGraph_edges("/home/mpkuse/catkin_ws/src/nap/slam_data/init_edges.txt");
+    g.writePoseGraph_nodes(BASE_PATH+"/init_nodes.txt");
+    g.writePoseGraph_edges(BASE_PATH+"/init_edges.txt");
     cout << "total nodes : "<< g.nNodes.size() << endl;
     cout << "total nEdgesOdometry : "<< g.nEdgesOdometry.size() << endl;
     cout << "total nEdgesClosure : "<< g.nEdgesClosure.size() << endl;
@@ -500,7 +502,7 @@ int main()
     for( int i=0 ; i<g.nEdgesClosure.size() ; i++ )
     {
         double switch_prior = .9 + drand48() / 10.0;
-        cout << "switch_prior : "<< switch_prior << endl;
+        // cout << "switch_prior : "<< switch_prior << endl;
         // switches.push_back( new double[1] );
         double * switch_opt_var = new double[1]; //optimizable
         switches.push_back(switch_opt_var);
@@ -517,7 +519,7 @@ int main()
     for( int i=0 ; i<g.nEdgesBogus.size() ; i++ )
     {
         double switch_prior = .9 + drand48() / 10.0;
-        cout << "switch_prior : "<< switch_prior << endl;
+        // cout << "switch_prior : "<< switch_prior << endl;
         // switches.push_back( new double[1] );
         double * switch_opt_var = new double[1]; //optimizable
         switches.push_back(switch_opt_var);
@@ -549,9 +551,9 @@ int main()
     cout << summary.FullReport() << endl;
 
     // Write Pose Graph after Optimization
-    g.writePoseGraph_nodes("/home/mpkuse/catkin_ws/src/nap/slam_data/after_opt_nodes.txt");
-    g.writePoseGraph_edges("/home/mpkuse/catkin_ws/src/nap/slam_data/after_opt_edges.txt");
-    g.writePoseGraph_switches("/home/mpkuse/catkin_ws/src/nap/slam_data/switches.txt", switches_priors, switches);
+    g.writePoseGraph_nodes(BASE_PATH+"/after_opt_nodes.txt");
+    g.writePoseGraph_edges(BASE_PATH+"/after_opt_edges.txt");
+    g.writePoseGraph_switches(BASE_PATH+"/switches.txt", switches_priors, switches);
 
 
 }
